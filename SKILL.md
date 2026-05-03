@@ -1,11 +1,48 @@
 ---
 name: hearth
-description: Run a fast, configurable health-check sweep across every device in a homelab. Use this when the user asks about server status, host health, lab status, or asks "are my servers up", "check all servers", "how is the lab", "health check", "what's running", "device health", "is X up". Supports Linux, macOS, Raspberry Pi, Android (Termux/chroot), and Windows hosts (HTTP-only). Returns a 5-layer per-device snapshot (ping, uptime+load, memory+disk, services, app health) in seconds. Read-only — never modifies remote state.
+description: A fast, read-only health-check sweep across every device in a homelab — ping, uptime/load, memory/disk, services, and app health, in 14 seconds with output you can scan in 30. Configuration-driven (~/.hearth/devices.yaml describes the lab; the skill is generic). Use when the user asks "how is the lab?", "server status", "check all servers", "is X up?", "health check", "what's down?", "anything broken?". Supports Linux, macOS, Raspberry Pi, Android (Termux/chroot), and Windows hosts (HTTP-only probe). Honest reporting — devices that can't be probed at L4 (Windows, chroots) are reported as such, never faked green. Read-only — never restarts services, never writes to remote hosts.
 ---
 
-## What hearth does
+## What hearth gets you
 
-hearth runs a per-device health probe in five layers across a user-defined list of homelab hosts. It is **configuration-driven** — the skill itself contains zero knowledge of any specific lab. The user describes their devices in `~/.hearth/devices.yaml` (or wherever `HEARTH_CONFIG` points), and hearth reads that config to drive its probes.
+**Before hearth:** six SSH terminals open on a Friday afternoon. Type `uptime; free -h; df -h; systemctl is-active <svc1> <svc2> ...` on each box. Eight minutes in, you've forgotten what server 1 said.
+
+**With hearth:** one command, 14 seconds, every device, same format, one screen. Done.
+
+```
+=== HOMELAB — ESTATE HEALTH SWEEP ===
+=== 192.0.2.10 main-server ===
+  L1 ping:    OK
+  L2 uptime:  1 day, 2 hours, load: 0.15 0.18 0.15
+  L3 mem:     used 1.6Gi / 7.7Gi, 6.0Gi avail | disk: / 6% used, 814G free
+  L4 svc:     openclaw=active nginx=active ollama=active cron=active
+  L5 app:     gateway={"ok":true} | https-front=HTTP 200
+=== 192.0.2.20 fileserver ===
+  L1 ping:    OK   ...
+=== sweep complete in 14 seconds ===
+```
+
+## Why someone uses this skill
+
+Three things make hearth different from "just SSH and check yourself" or "set up Prometheus":
+
+- **Read-only by design.** Never modifies remote state. No `systemctl restart`, no `apt-get install`, no writes beyond `/tmp/.hearth_*`. Safe to run from cron, from an LLM agent, from a colleague's shell. Most monitoring tools can't make that promise.
+- **Honest about what it can't see.** When a layer can't be probed (Windows host with no SSH, chroot with no systemd), hearth says so explicitly — `unmanaged-host (no SSH)`, `no-systemd (chroot — N/A)`. It doesn't fake a green result. You always know whether a green is real or just unmeasured.
+- **Zero install on remote hosts.** No agent on every box. No `node_exporter`. No daemon. Just SSH from one bridgehead. If you can SSH to a host, hearth can probe it.
+
+The 5-layer pattern catches the failure classes that actually hit homelabs in production:
+
+| Layer | Catches |
+|-------|---------|
+| L1 ping | Network drop, host off, ICMP blocked |
+| L2 uptime+load | Reboots, runaway load |
+| L3 mem+disk | Disk filling up before journald truncates logs, OOM-precursor leaks |
+| L4 services | Service crashed, unit name drift after distro upgrade, fail2ban banning your bridgehead |
+| L5 app | The "service is up but returns HTTP 500 for three days" silent-failure class |
+
+## How hearth works
+
+hearth is **configuration-driven** — the skill itself contains zero knowledge of any specific lab. The user describes their devices in `~/.hearth/devices.yaml` (or wherever `HEARTH_CONFIG` points), and hearth reads that config to drive its probes. Six device archetypes ship as worked examples (Linux+systemd, chroot/no-systemd, Raspberry Pi, Windows HTTP-only, SLURM cluster, multi-app web stack).
 
 ## Triggering
 

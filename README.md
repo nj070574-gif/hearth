@@ -2,7 +2,7 @@
 
 > *the heartbeat of your homelab*
 
-A configurable, multi-host health-check skill for homelab admins. One config file, one command, and you get a clean per-device status sweep covering reachability, system load, memory, disk, services, and app-specific health — all in seconds.
+**One command. 14 seconds. Every device in your lab. Same format, one screen.** No agent to install on remote hosts, no database, no SaaS, no telemetry — just SSH probes from a single bridgehead. Read-only by design, honest about what it can't see, and small enough to read top-to-bottom in 15 minutes before installing.
 
 ```
 === HOMELAB — ESTATE HEALTH SWEEP ===
