@@ -72,7 +72,7 @@ for name in d.get('groups', {}).get('$group', []):
   else
     while IFS= read -r d; do
       devices+=("$d")
-    done < <(yq eval ".groups.$group[]" "$config_path")
+    done < <(yq eval ".groups.${group}[]" "$config_path")
   fi
   if [ "${#devices[@]}" -eq 0 ]; then
     echo "ERROR: group '$group' is empty or undefined in $config_path" >&2
@@ -96,7 +96,7 @@ fi
 device_timeout=$(hearth_get_default "$config_path" "device_timeout" "18")
 
 start=$(date +%s)
-hearth_sweep_header
+hearth_sweep_header ""
 
 for d in "${devices[@]}"; do
   timeout "$device_timeout" "$SCRIPT_DIR/check-device.sh" "$d" 2>&1

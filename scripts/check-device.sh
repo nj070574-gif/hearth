@@ -40,7 +40,6 @@ fi
 ping_count=$(hearth_get_default "$config_path" "ping_count" "1")
 ping_timeout=$(hearth_get_default "$config_path" "ping_timeout" "2")
 default_connect_timeout=$(hearth_get_default "$config_path" "ssh_connect_timeout" "4")
-default_device_timeout=$(hearth_get_default "$config_path" "device_timeout" "18")
 
 # Per-device overrides
 connect_timeout="${dev[ssh_connect_timeout]:-$default_connect_timeout}"
