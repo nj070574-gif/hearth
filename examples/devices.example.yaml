@@ -32,7 +32,7 @@ devices:
     apps:
       - name: web
         type: http
-        url: http://127.0.0.1/
+        url: http://localhost/
         expect_code: 200
 
   # ─── Archetype: Linux + systemd via SSH password ────────────────────────

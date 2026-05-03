@@ -163,7 +163,7 @@ devices:
     apps:
       - name: gateway
         type: http
-        url: http://127.0.0.1:18789/healthz
+        url: http://localhost:18789/healthz
       - name: https-front
         type: http
         url: https://192.0.2.10:8444/
