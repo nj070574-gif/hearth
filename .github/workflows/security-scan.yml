@@ -1,0 +1,142 @@
+name: security-scan
+
+# Runs PrePublishGate's regex layer in CI. Catches credential shapes,
+# personally-identifying patterns, and OS-path leaks before merge.
+#
+# DESIGN NOTES:
+#  - This workflow contains ZERO literal real secrets (passwords, names, real
+#    IPs, etc.). Putting those in a workflow rule would commit them to the repo
+#    — defeating the purpose. Local maintainers maintain a private secrets
+#    list outside the repo (see PrePublishGate config\secrets.txt).
+#  - For project-specific shape rules, set repo secrets named
+#    PRIVATE_BLOCKLIST_RE_1 .. PRIVATE_BLOCKLIST_RE_5 (regex strings). They
+#    will be checked silently. Empty by default.
+#  - Exit codes: 2 = blocker (real-pattern match), 1 = critical needing
+#    review, 0 = pass. Workflow fails on >0.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  prepublishgate:
+    runs-on: ubuntu-latest
+    name: PrePublishGate (regex layer)
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Comprehensive regex-based leak scan
+        env:
+          PRIVATE_BLOCKLIST_RE_1: ${{ secrets.PRIVATE_BLOCKLIST_RE_1 }}
+          PRIVATE_BLOCKLIST_RE_2: ${{ secrets.PRIVATE_BLOCKLIST_RE_2 }}
+          PRIVATE_BLOCKLIST_RE_3: ${{ secrets.PRIVATE_BLOCKLIST_RE_3 }}
+          PRIVATE_BLOCKLIST_RE_4: ${{ secrets.PRIVATE_BLOCKLIST_RE_4 }}
+          PRIVATE_BLOCKLIST_RE_5: ${{ secrets.PRIVATE_BLOCKLIST_RE_5 }}
+        run: |
+          set -u
+          fail_count=0
+          warn_count=0
+
+          # Helper: scan with a regex, classify results, and never echo
+          # the matched string to logs (only file:line and rule name).
+          # Args: severity rule_name pattern [extra_grep_opts]
+          scan() {
+            local sev="$1"
+            local rule="$2"
+            local pat="$3"
+            shift 3
+            local hits
+            hits=$(grep -rEn $@ "$pat" . 2>/dev/null \
+              | grep -v '\.git/' \
+              | grep -v 'node_modules/' \
+              | grep -v '__pycache__/' \
+              | grep -v '\.github/workflows/security-scan\.yml' \
+              || true)
+            if [ -n "$hits" ]; then
+              local n
+              n=$(echo "$hits" | wc -l | tr -d ' ')
+              if [ "$sev" = "BLOCKER" ] || [ "$sev" = "CRITICAL" ]; then
+                echo "::error title=$sev — $rule::found $n match(es)"
+                # Only show file:line, not the line content (which contains the secret).
+                echo "$hits" | awk -F: '{print "  ::error file=" $1 ",line=" $2 ":: '"$rule"'"}'
+                fail_count=$((fail_count + n))
+              elif [ "$sev" = "HIGH" ] || [ "$sev" = "MEDIUM" ]; then
+                echo "::warning title=$sev — $rule::found $n match(es)"
+                echo "$hits" | head -20 | awk -F: '{print "    " $1 ":" $2}'
+                warn_count=$((warn_count + n))
+              fi
+            fi
+          }
+
+          echo ""
+          echo "═══ Tier 1: provider tokens (CRITICAL) ═══"
+          scan CRITICAL "ClawHub token"        '\bclh_[A-Za-z0-9_-]{30,}\b'
+          scan CRITICAL "GitHub PAT"           '\b(ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9]{20,}\b'
+          scan CRITICAL "Tailscale auth key"   '\btskey-(auth|client|api)-[A-Za-z0-9-]{20,}\b'
+          scan CRITICAL "AWS access key"       '\b(AKIA|ASIA|AGPA|AIDA|AROA|ANPA)[A-Z0-9]{16}\b'
+          scan CRITICAL "Slack token"          '\bxox[abprs]-[A-Za-z0-9-]{10,}\b'
+          scan CRITICAL "Google API key"       '\bAIza[0-9A-Za-z_-]{35}\b'
+          scan CRITICAL "Anthropic API key"    '\bsk-ant-[A-Za-z0-9_-]{30,}\b'
+          scan CRITICAL "OpenAI API key"       '\bsk-[A-Za-z0-9]{30,}\b'
+          scan CRITICAL "Stripe live key"      '\bsk_live_[A-Za-z0-9]{24,}\b'
+          scan CRITICAL "Telegram bot token"   '\b[0-9]{8,10}:[A-Za-z0-9_-]{30,}\b'
+          scan CRITICAL "JWT token"            '\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_+/=-]{20,}\b'
+          scan CRITICAL "Bearer auth header"   -i 'Authorization:\s*Bearer\s+[A-Za-z0-9_+/=.-]{20,}'
+          scan CRITICAL "Basic auth in URL"    'https?://[^/[:space:]:]+:[^@/[:space:]]{4,}@[^[:space:]]+'
+          scan CRITICAL "Private key block"    -- '-----BEGIN (RSA|OPENSSH|EC|DSA|ENCRYPTED|PGP) PRIVATE KEY-----'
+
+          echo ""
+          echo "═══ Tier 2: PII / topology (HIGH) ═══"
+          scan HIGH "Real LAN 192.168.x.x"        '\b192\.168\.[0-9]+\.[0-9]+\b'
+          scan HIGH "Real LAN 10.x.x.x"           '\b10\.[0-9]+\.[0-9]+\.[0-9]+\b'
+          scan HIGH "Tailscale CGNAT (likely real)" '\b100\.(6[5-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]+\.[0-9]+\b'
+          scan HIGH "MAC address (non-example)"   '\b([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b' --include='*.md' --include='*.yaml' --include='*.sh'
+
+          echo ""
+          echo "═══ Tier 3: paths (MEDIUM) ═══"
+          scan MEDIUM "C:/Users/<name> path"     '[A-Z]:\\Users\\[A-Za-z][A-Za-z0-9._-]+\\'
+          scan MEDIUM "Personal /home/<user>"    '/home/[a-z][a-z0-9_-]+/'
+          scan MEDIUM "OneDrive personal path"   'OneDrive[^"\s]*'
+
+          # Tier 4: optional repo-secret-driven blocklists (silent — only fail/pass)
+          echo ""
+          echo "═══ Tier 4: project-specific blocklists (BLOCKER if set) ═══"
+          for n in 1 2 3 4 5; do
+            varname="PRIVATE_BLOCKLIST_RE_$n"
+            pat="$(printenv "$varname" || true)"
+            if [ -n "$pat" ]; then
+              if grep -rEln "$pat" . 2>/dev/null | grep -v '\.git/' | grep -v '\.github/workflows/security-scan\.yml' | grep -v -q '^$'; then
+                echo "::error title=BLOCKER — project blocklist $n::pattern matched (details withheld)"
+                fail_count=$((fail_count + 1))
+              fi
+            fi
+          done
+
+          echo ""
+          echo "═══════════════════════════════════════════════"
+          echo "  CRITICAL/BLOCKER findings: $fail_count"
+          echo "  HIGH/MEDIUM findings:      $warn_count"
+          echo "═══════════════════════════════════════════════"
+
+          # MAC addresses are flagged HIGH but registry/example MACs (AA:BB:CC:DD:EE:FF,
+          # 00:00:00:00:00:00) are common false positives. We log them but don't fail
+          # the build on HIGH/MEDIUM alone — only on CRITICAL.
+          if [ "$fail_count" -gt 0 ]; then
+            echo ""
+            echo "❌ Build failed. Review the CRITICAL/BLOCKER errors above."
+            echo "   For false positives: see PrePublishGate fix-pack rules"
+            echo "   at https://github.com/nj070574-gif/hearth/blob/main/CONTRIBUTING.md"
+            exit 2
+          fi
+          if [ "$warn_count" -gt 0 ]; then
+            echo ""
+            echo "⚠ Build passed with warnings. Manual review recommended."
+            echo "  HIGH severity findings are usually example MACs / Ofcom-reserved phone numbers / RFC 5737 IPs."
+          fi
+          echo "✅ PrePublishGate scan passed"
