@@ -20,7 +20,7 @@ The default archetype. Covers most servers: Debian/Ubuntu/Arch/Fedora/RHEL with 
   apps:
     - name: web
       type: http
-      url: http://192.0.2.20/
+      url: http://web-server.lan/
       expect_code: 200
 ```
 

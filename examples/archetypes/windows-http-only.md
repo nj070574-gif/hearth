@@ -21,11 +21,11 @@ For Windows machines that you want to probe without SSH. Common cases:
   apps:
     - name: lm-studio
       type: http
-      url: http://192.0.2.80:1234/v1/models
+      url: http://workstation.lan:1234/v1/models
       expect_code: 200
     - name: obsidian-rest
       type: http
-      url: https://192.0.2.80:27124/
+      url: https://workstation.lan:27124/
       auth_header_env: HEARTH_OBSIDIAN_TOKEN
       expect_code: 200
       verify_tls: false   # self-signed cert

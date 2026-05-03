@@ -21,7 +21,7 @@ For Pi Zero / Pi 3 / Pi 4 / Pi 5 running Raspberry Pi OS or Debian for ARM.
   apps:
     - name: charger-api
       type: http
-      url: http://192.0.2.40/api
+      url: http://pi-charger.lan/api
       expect_code: 200
     - name: cpu-temp
       type: command

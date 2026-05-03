@@ -47,7 +47,7 @@ devices:
     apps:
       - name: nginx
         type: http
-        url: http://192.0.2.20/
+        url: http://fileserver.lan/
         expect_code: 200
       - name: tailscale
         type: command
@@ -64,7 +64,7 @@ devices:
     apps:
       - name: home-assistant-api
         type: http
-        url: https://192.0.2.30:8123/api/
+        url: https://homeassistant.lan:8123/api/
         # Bearer token from env var
         auth_header_env: HEARTH_HA_TOKEN
         expect_json_path: message
@@ -82,7 +82,7 @@ devices:
     apps:
       - name: charger-api
         type: http
-        url: http://192.0.2.40/api
+        url: http://pi-charger.lan/api
         expect_code: 200
         # Parse JSON and surface this field in L5 output
         json_extract: 'eo_charger_state.status'
@@ -174,12 +174,12 @@ devices:
     apps:
       - name: lm-studio
         type: http
-        url: http://192.0.2.80:1234/v1/models
+        url: http://workstation.lan:1234/v1/models
         expect_code: 200
         json_extract: 'data.length'  # surface model count
       - name: obsidian-rest
         type: http
-        url: https://192.0.2.80:27124/
+        url: https://workstation.lan:27124/
         auth_header_env: HEARTH_OBSIDIAN_TOKEN
         expect_code: 200
         verify_tls: false

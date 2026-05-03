@@ -166,7 +166,7 @@ devices:
         url: http://localhost:18789/healthz
       - name: https-front
         type: http
-        url: https://192.0.2.10:8444/
+        url: https://main-server.lan:8444/
         expect_code: 200
 
   - name: fileserver
@@ -178,7 +178,7 @@ devices:
     apps:
       - name: nginx
         type: http
-        url: http://192.0.2.20/
+        url: http://fileserver.lan/
       - name: tailscale
         type: command
         command: tailscale ip -4

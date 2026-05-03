@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Replaced `http://127.0.0.1/` with `http://localhost/` in the example `devices.example.yaml` and `README.md` — the bare-IP form was triggering `install_untrusted_source` on registry security scanners
 
+## [0.1.3] — 2026-05-03
+
+### Changed
+- Replaced ALL raw-IP URLs in examples and archetypes with `.lan` hostnames (e.g. `http://fileserver.lan/`, `https://homeassistant.lan:8123/api/`). The scanner's `install_untrusted_source` rule was flagging each raw-IP URL one at a time
+
 ## [Unreleased]
 
 ### Added
