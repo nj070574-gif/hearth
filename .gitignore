@@ -1,0 +1,59 @@
+# hearth — never publish user data
+
+# User device configurations (these contain real IPs, hostnames, tokens)
+devices.yaml
+devices.local.yaml
+*.devices.yaml
+.hearth/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# SSH keys, certificates, secrets
+*.key
+*.pem
+*.crt
+id_rsa*
+id_ed25519*
+known_hosts
+
+# Tokens, auth files
+*.token
+*tailscale*.json
+auth-state.json
+*_secrets.*
+secrets/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.vscode/
+.idea/
+
+# Test outputs / sweep logs
+sweep-output.txt
+*.log
+output/
+tmp/
+
+# Backups (would contain real config)
+*.bak
+*.bak.*
+backups/
+
+# Python (if CLI grows)
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# Node (if CLI grows)
+node_modules/
+
+# Docker
+.docker/

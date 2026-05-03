@@ -1,0 +1,96 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          # Lint all shell scripts. Ignore SC1091 (sourced files not following) since
+          # we source via dynamic paths, and SC2086 (word splitting in $opts) which is
+          # intentional for SSH option strings.
+          shellcheck -e SC1091,SC2086 scripts/*.sh scripts/lib/*.sh
+
+  yaml-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate example YAML
+        run: |
+          sudo apt-get install -y python3-yaml
+          python3 -c "
+          import yaml
+          with open('examples/devices.example.yaml') as f:
+              d = yaml.safe_load(f)
+          assert 'devices' in d, 'missing devices section'
+          for dev in d['devices']:
+              assert 'name' in dev, f'device missing name: {dev}'
+              assert 'address' in dev, f'device missing address: {dev}'
+              assert 'auth' in dev, f'device missing auth: {dev}'
+              assert dev['auth'] in ['local', 'ssh-pass', 'ssh-key', 'http-only'], \
+                  f'bad auth in {dev[\"name\"]}: {dev[\"auth\"]}'
+          print(f'Valid example YAML — {len(d[\"devices\"])} devices defined')
+          "
+
+  privacy-scrub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for accidental private data
+        run: |
+          # Scan for things that should NEVER be committed.
+          # These rules are intentionally generic — we DO NOT list known real
+          # secrets here, because doing so would put them IN the repo (defeating
+          # the purpose). Maintainers should keep a separate, private list of
+          # known-bad strings and grep for those locally before pushing.
+          set -e
+          fail=0
+
+          # Reject real LAN address ranges in docs/code.
+          # Use the RFC 5737 documentation block (192.0.2.0/24, 198.51.100.0/24,
+          # 203.0.113.0/24) for any sample data instead.
+          if grep -rn --include='*.md' --include='*.yaml' --include='*.sh' \
+              -E '\b192\.168\.[0-9]+\.[0-9]+\b' . | grep -v '\.git'; then
+            echo "FAIL: 192.168.x.x address found — use 192.0.2.x (RFC 5737) instead"
+            fail=1
+          fi
+
+          if grep -rn --include='*.md' --include='*.yaml' --include='*.sh' \
+              -E '\b10\.[0-9]+\.[0-9]+\.[0-9]+\b' . | grep -v '\.git'; then
+            echo "FAIL: 10.x.x.x address found — use 192.0.2.x (RFC 5737) instead"
+            fail=1
+          fi
+
+          # Reject SSH-style private key blocks
+          if grep -rln 'BEGIN .* PRIVATE KEY' . | grep -v '\.git'; then
+            echo "FAIL: private key block found"
+            fail=1
+          fi
+
+          # Reject obvious provider token prefixes
+          if grep -rEn '\b(ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9]{20,}' . | grep -v '\.git'; then
+            echo "FAIL: GitHub PAT-shaped token found"
+            fail=1
+          fi
+          if grep -rEn '\btskey-(auth|client|api)-[A-Za-z0-9-]+' . | grep -v '\.git'; then
+            echo "FAIL: Tailscale auth key found"
+            fail=1
+          fi
+          if grep -rEn '\b(AKIA|ASIA)[A-Z0-9]{16}\b' . | grep -v '\.git'; then
+            echo "FAIL: AWS access key ID-shaped string found"
+            fail=1
+          fi
+
+          if [ "$fail" -eq 1 ]; then
+            exit 1
+          fi
+          echo "Privacy scrub passed"

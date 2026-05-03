@@ -1,0 +1,7 @@
+# Ensure shell scripts are executable when checked out on Linux/macOS
+scripts/*.sh text eol=lf
+scripts/lib/*.sh text eol=lf
+*.sh text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text

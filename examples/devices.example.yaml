@@ -1,0 +1,195 @@
+# hearth — example device configuration
+#
+# Copy this file to ~/.hearth/devices.yaml and customise for your homelab.
+# NEVER commit your real devices.yaml to a public repository — it contains
+# real IPs, hostnames, and references your auth setup.
+#
+# Documentation block IPs (192.0.2.0/24) used throughout — replace with your own.
+
+# ──────────────────────────────────────────────────────────────────────────
+# DEFAULTS — applied to every device unless overridden
+# ──────────────────────────────────────────────────────────────────────────
+defaults:
+  # SSH connect timeout (seconds). 4 is fine for LAN. Increase for mobile/Wi-Fi.
+  ssh_connect_timeout: 4
+  # Wrapper timeout per device (seconds). Hard upper bound — prevents one
+  # hung host from blocking the whole sweep.
+  device_timeout: 18
+  # Default ping count and timeout
+  ping_count: 1
+  ping_timeout: 2
+
+# ──────────────────────────────────────────────────────────────────────────
+# DEVICES
+# ──────────────────────────────────────────────────────────────────────────
+devices:
+
+  # ─── Archetype: LOCAL host (no SSH needed) ─────────────────────────────
+  - name: main-server
+    address: 192.0.2.10
+    auth: local
+    services: [ssh, nginx, cron]
+    apps:
+      - name: web
+        type: http
+        url: http://127.0.0.1/
+        expect_code: 200
+
+  # ─── Archetype: Linux + systemd via SSH password ────────────────────────
+  - name: fileserver
+    address: 192.0.2.20
+    auth: ssh-pass
+    user: admin
+    # Password lives in env var. NEVER hard-code in YAML.
+    # Set with: export HEARTH_PASS_FILESERVER='your-password'
+    password_env: HEARTH_PASS_FILESERVER
+    services: [ssh, nginx, smbd, nmbd, nfs-mountd]
+    apps:
+      - name: nginx
+        type: http
+        url: http://192.0.2.20/
+        expect_code: 200
+      - name: tailscale
+        type: command
+        command: tailscale ip -4
+        expect_match: '^100\.'
+
+  # ─── Archetype: Linux + systemd via SSH key ─────────────────────────────
+  - name: homeassistant
+    address: 192.0.2.30
+    auth: ssh-key
+    user: admin
+    key_path: ~/.ssh/id_ed25519_homeassistant
+    services: [ssh, docker, hassio-supervisor, nginx, tailscaled, fail2ban]
+    apps:
+      - name: home-assistant-api
+        type: http
+        url: https://192.0.2.30:8123/api/
+        # Bearer token from env var
+        auth_header_env: HEARTH_HA_TOKEN
+        expect_json_path: message
+        expect_json_value: "API running."
+        verify_tls: false  # self-signed cert
+
+  # ─── Archetype: Raspberry Pi (RAM-tight, single-core, vcgencmd) ─────────
+  - name: pi-charger
+    address: 192.0.2.40
+    auth: ssh-pass
+    user: pi
+    password_env: HEARTH_PASS_PI
+    ssh_connect_timeout: 6  # mobile Wi-Fi sometimes slow
+    services: [ssh, cron, tailscaled, openeo, wifi-guardian]
+    apps:
+      - name: charger-api
+        type: http
+        url: http://192.0.2.40/api
+        expect_code: 200
+        # Parse JSON and surface this field in L5 output
+        json_extract: 'eo_charger_state.status'
+    extras:
+      cpu_temp: vcgencmd  # use Pi-specific temp probe
+
+  # ─── Archetype: chroot / no-systemd host (Kali NetHunter, Termux, etc.) ─
+  - name: phone-pentest
+    address: 192.0.2.50
+    auth: ssh-pass
+    user: kali
+    password_env: HEARTH_PASS_PHONE
+    ssh_connect_timeout: 8  # mobile, sometimes very slow first connect
+    ssh_warmup: true        # do a throwaway SSH first; ignore failure
+    no_systemd: true        # L4 reports "no-systemd (chroot — N/A)"
+    apps:
+      - name: tool-present
+        type: command
+        command: 'test -x /usr/bin/nmap && echo present || echo MISSING'
+        expect_match: '^present$'
+      - name: tailscale
+        type: command
+        # If using userspace networking mode, specify socket path
+        command: 'tailscale --socket=/var/run/tailscale/tailscaled.sock ip -4'
+        expect_match: '^100\.'
+
+  # ─── Archetype: SLURM cluster head ──────────────────────────────────────
+  - name: cluster-head
+    address: 192.0.2.60
+    auth: ssh-pass
+    user: admin
+    password_env: HEARTH_PASS_CLUSTER
+    services: [ssh, slurmctld, slurmd, munge, nfs-mountd]
+    apps:
+      - name: slurm-status
+        type: command
+        # All compute nodes should be 'idle' or 'alloc'/'mix'
+        command: 'sinfo -h -o "%n=%T" | sort -u | tr "\n" " "'
+        expect_no_match: '(down|drain)'
+
+  # ─── Archetype: SLURM compute node ──────────────────────────────────────
+  - name: cluster-compute-01
+    address: 192.0.2.61
+    auth: ssh-pass
+    user: admin
+    password_env: HEARTH_PASS_CLUSTER
+    services: [ssh, slurmd, munge]
+    # These services are expected to fail; ignore them
+    expected_failed_units: [lightdm, plymouth-quit]
+    apps:
+      - name: nfs-mount-shared
+        type: command
+        command: 'timeout 3 ls /cluster/shared >/dev/null 2>&1 && echo ok || echo FAIL'
+        expect_match: '^ok$'
+      - name: nfs-mount-home
+        type: command
+        command: 'timeout 3 ls /cluster/home >/dev/null 2>&1 && echo ok || echo FAIL'
+        expect_match: '^ok$'
+
+  # ─── Archetype: Magento / multi-app web stack ───────────────────────────
+  - name: web-stack
+    address: 192.0.2.70
+    auth: ssh-pass
+    user: admin
+    password_env: HEARTH_PASS_WEB
+    services: [ssh, apache2, mariadb, opensearch, php-fpm, redis-server]
+    device_timeout: 15  # indexer status can be slow
+    apps:
+      - name: storefront
+        type: http
+        # If your domain doesn't resolve from your bridgehead, use --resolve
+        url: https://shop.example.com/
+        resolve: shop.example.com:443:192.0.2.70
+        expect_code: 200
+        verify_tls: false
+      - name: opensearch-cluster
+        type: command
+        command: 'curl -s --max-time 3 http://127.0.0.1:9200/_cluster/health | jq -r .status'
+        expect_match: '^(green|yellow)$'
+      - name: magento-indexers
+        type: command
+        command: 'cd /var/www/html/magento && php bin/magento indexer:status | grep -c "Ready" || echo 0'
+        expect_match: '^14$'  # adjust to your indexer count
+
+  # ─── Archetype: Windows host (HTTP-only, no SSH) ────────────────────────
+  - name: workstation
+    address: 192.0.2.80
+    auth: http-only
+    apps:
+      - name: lm-studio
+        type: http
+        url: http://192.0.2.80:1234/v1/models
+        expect_code: 200
+        json_extract: 'data.length'  # surface model count
+      - name: obsidian-rest
+        type: http
+        url: https://192.0.2.80:27124/
+        auth_header_env: HEARTH_OBSIDIAN_TOKEN
+        expect_code: 200
+        verify_tls: false
+        json_extract: authenticated
+
+# ──────────────────────────────────────────────────────────────────────────
+# OPTIONAL: groups for partial sweeps
+# ──────────────────────────────────────────────────────────────────────────
+# Run `./scripts/sweep.sh --group cluster` to check just the SLURM nodes.
+groups:
+  cluster: [cluster-head, cluster-compute-01]
+  web: [main-server, web-stack]
+  iot: [pi-charger]
