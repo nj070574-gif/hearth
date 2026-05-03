@@ -118,4 +118,4 @@ If asked about specific configuration values (passwords, tokens), hearth does NO
 
 ## Version
 
-0.1.3 — moderation-friendly clarity pass. OpenClaw skill mode.
+0.1.4 — schema-only example.yaml; app probes documented per-archetype. OpenClaw skill mode.

@@ -152,22 +152,14 @@ See [docs/PLATFORMS.md](docs/PLATFORMS.md) for details.
 
 ## Configuration
 
-A device config looks like this:
+A device config has a simple shape:
 
 ```yaml
 devices:
   - name: main-server
     address: 192.0.2.10
     auth: local                # local | ssh-pass | ssh-key | http-only
-    services: [openclaw, nginx, ollama, cron]
-    apps:
-      - name: gateway
-        type: http
-        url: http://localhost:18789/healthz
-      - name: https-front
-        type: http
-        url: https://main-server.lan:8444/
-        expect_code: 200
+    services: [ssh, nginx, cron]
 
   - name: fileserver
     address: 192.0.2.20
@@ -175,17 +167,11 @@ devices:
     user: admin
     password_env: HEARTH_PASS_FILESERVER
     services: [ssh, nginx, smbd, nmbd, nfs-mountd]
-    apps:
-      - name: nginx
-        type: http
-        url: http://fileserver.lan/
-      - name: tailscale
-        type: command
-        command: tailscale ip -4
-        expect_match: '^100\.'
 ```
 
-Full reference: [docs/CONFIG.md](docs/CONFIG.md)
+For full app-health probes (HTTP, JSON parsing, custom commands), see the per-archetype guides under [examples/archetypes/](examples/archetypes/) — each one shows a complete worked example for that device type.
+
+Full schema reference: [docs/CONFIG.md](docs/CONFIG.md)
 
 ## Device archetypes (provided as examples)
 

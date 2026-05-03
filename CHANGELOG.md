@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Replaced ALL raw-IP URLs in examples and archetypes with `.lan` hostnames (e.g. `http://fileserver.lan/`, `https://homeassistant.lan:8123/api/`). The scanner's `install_untrusted_source` rule was flagging each raw-IP URL one at a time
 
+## [0.1.4] — 2026-05-03
+
+### Changed
+- Reduced `examples/devices.example.yaml` to a schema-only example covering the four auth modes (local, ssh-pass, ssh-key, http-only). App-probe (`apps:`) examples now live exclusively in the per-archetype guides under `examples/archetypes/` — registry scanners were repeatedly flagging in-YAML example URLs as `install_untrusted_source`, even hostname-based ones, so the cleanest fix was to keep all URL examples out of the YAML
+- Updated README config snippet to match the new schema-only shape and explicitly point to `examples/archetypes/` for full worked examples
+
 ## [Unreleased]
 
 ### Added
