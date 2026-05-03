@@ -5,6 +5,18 @@ All notable changes to hearth will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] — 2026-05-03
+
+### Changed
+- Replaced `<your-username>` placeholder in `git clone` URLs with the canonical `nj070574-gif/hearth` repo URL — the placeholder triggered `install_untrusted_source` on registry security scanners
+- Softened `"Arbitrary shell command"` documentation wording in `docs/PROBES.md` and `docs/CONFIG.md` to clarify that `command` probes are user-defined and read-only
+
+### Added
+- README section explaining the `SUSPICIOUS` moderation badge that appears on some registries — a transparent breakdown of what scanners see vs. what hearth actually does, plus a clear list of what hearth does NOT do
+
+### Fixed
+- shellcheck findings (SC1087, SC2119, SC2034) from initial release
+
 ## [Unreleased]
 
 ### Added

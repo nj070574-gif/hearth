@@ -103,7 +103,7 @@ L5 app:     web=HTTP 200 | api=HTTP 200 | health=HTTP 200
 ```
 
 ### `command`
-Arbitrary shell command on the device, with regex match against output. Most flexible.
+User-defined read-only command on the device, with regex match against output. The command is taken verbatim from the user's own `devices.yaml` — hearth does not generate or fetch commands from any other source.
 ```
 L5 app:     opensearch-cluster=OK (green) | indexers=OK (14) | tailscale=OK (100.64.0.10)
 ```

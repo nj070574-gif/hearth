@@ -160,7 +160,7 @@ If you see `^[[31;1m` style escape codes, your terminal isn't interpreting ANSI 
 
 ## Got something not in this list?
 
-Open an issue at https://github.com/<your-username>/hearth/issues — please include:
+Open an issue at https://github.com/nj070574-gif/hearth/issues — please include:
 - Your platform (`uname -a`)
 - Your hearth version (`./scripts/sweep.sh --version`)
 - The device archetype that's misbehaving

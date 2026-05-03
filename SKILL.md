@@ -118,4 +118,4 @@ If asked about specific configuration values (passwords, tokens), hearth does NO
 
 ## Version
 
-0.1.0 — initial public release. OpenClaw skill mode.
+0.1.1 — moderation-friendly clarity pass. OpenClaw skill mode.

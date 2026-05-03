@@ -118,7 +118,7 @@ Designed for the realities of real homelabs:
 
 ```bash
 # 1. Install
-git clone https://github.com/<your-username>/hearth.git
+git clone https://github.com/nj070574-gif/hearth.git
 cd hearth
 
 # 2. Copy the example config and customise it for your devices
@@ -207,6 +207,30 @@ Mix and match for your own lab.
 - **No telemetry.** hearth doesn't phone home. Your sweep results stay on your machine.
 - **No third-party services required.** No accounts, no API keys, no SaaS dependencies.
 
+## About the SUSPICIOUS moderation badge on registries
+
+Some skill registries (including ClawHub) auto-flag this skill as **"SUSPICIOUS"** with reason codes like `install_untrusted_source`, `llm_suspicious`, and `vt_suspicious`. **This rating is expected** for any skill of this kind, and here's why — so you can make an informed decision before installing.
+
+The rating is triggered by static patterns that scanners cannot distinguish from genuinely-malicious skills:
+
+| What scanners see | What it actually is |
+|--|--|
+| Bash scripts that call `ssh` and `curl` against multiple remote hosts | Read-only health probes — `uptime`, `free`, `df`, `systemctl is-active`, `curl /healthz`. Same commands you'd type by hand. |
+| References to `sshpass` for password-based SSH | Optional dependency, only used if YOUR config sets `auth: ssh-pass`. Never invoked otherwise. |
+| Documentation showing `apt-get install`, `pkg install`, `brew install` | Standard install instructions for standard dependencies (bash, openssh, curl). |
+| User-defined `command:` probe type in YAML config | Runs YOUR commands from YOUR config, on YOUR machines. hearth does not generate, fetch, or modify these. |
+
+What hearth **does not** do, by design, with full source transparency:
+
+- ❌ Phone home, log to remote servers, or telemetry of any kind
+- ❌ Modify any state on remote hosts (no `systemctl restart`, no `apt-get install`, no writes beyond `/tmp/.hearth_*`)
+- ❌ Fetch or execute code from external sources at runtime
+- ❌ Read your `~/.ssh/` or `/etc/shadow` or any host-state outside what your YAML asks for
+- ❌ Send your config, hostnames, or sweep output anywhere off-host
+
+Every single shell command hearth runs is visible in `scripts/` (490 lines of bash, ~13 KB) — small enough to read top-to-bottom in 15 minutes. We encourage you to do exactly that before installing.
+
+If you have a security concern that isn't addressed by reading the source, please open an issue.
 ## Status
 
 Pre-release. Tested against a 10-device homelab covering:

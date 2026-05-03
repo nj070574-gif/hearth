@@ -98,7 +98,7 @@ Each app is one of two types: `http` or `command`.
 |-------|------|----------|-------|
 | `name` | string | yes | Shown in L5 output |
 | `type` | `command` | yes | |
-| `command` | string | yes | Shell command run on the device (or locally if auth=local) |
+| `command` | string | yes | User-defined read-only command run on the device (or locally if auth=local). Sourced verbatim from your own config — hearth does not generate, fetch, or modify commands. |
 | `expect_match` | regex | no | Regex against command stdout — output is OK if matches |
 | `expect_no_match` | regex | no | Inverse — output is OK if doesn't match |
 

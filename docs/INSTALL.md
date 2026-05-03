@@ -21,7 +21,7 @@ All platforms need:
 
 ```bash
 sudo apt-get install -y bash openssh-client sshpass curl python3 jq
-git clone https://github.com/<your-username>/hearth.git ~/hearth
+git clone https://github.com/nj070574-gif/hearth.git ~/hearth
 cd ~/hearth
 cp examples/devices.example.yaml ~/.hearth/devices.yaml
 $EDITOR ~/.hearth/devices.yaml
@@ -59,7 +59,7 @@ source ~/.zshrc
 bash --version  # should be 5+
 
 # Install hearth
-git clone https://github.com/<your-username>/hearth.git ~/hearth
+git clone https://github.com/nj070574-gif/hearth.git ~/hearth
 cd ~/hearth
 mkdir -p ~/.hearth
 cp examples/devices.example.yaml ~/.hearth/devices.yaml
@@ -96,7 +96,7 @@ Termux is the recommended way to run hearth on Android.
 pkg update
 pkg install bash git openssh sshpass curl python jq
 
-git clone https://github.com/<your-username>/hearth.git ~/hearth
+git clone https://github.com/nj070574-gif/hearth.git ~/hearth
 cd ~/hearth
 mkdir -p ~/.hearth
 cp examples/devices.example.yaml ~/.hearth/devices.yaml
