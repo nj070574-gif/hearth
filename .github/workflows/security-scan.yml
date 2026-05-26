@@ -11,6 +11,11 @@ name: security-scan
 #  - For project-specific shape rules, set repo secrets named
 #    PRIVATE_BLOCKLIST_RE_1 .. PRIVATE_BLOCKLIST_RE_5 (regex strings). They
 #    will be checked silently. Empty by default.
+#  - Tiers 1-4 scan the working tree. Tier 5 scans every blob across all
+#    refs (full git history) — catches leaks in old tags / orphaned commits
+#    that the working-tree scan would miss (this exact case bit us in the
+#    2026-05-26 v3 audit: 13 historical BLOCKERs in paired-skill / blueradar
+#    tags despite HEAD being clean).
 #  - Exit codes: 2 = blocker (real-pattern match), 1 = critical needing
 #    review, 0 = pass. Workflow fails on >0.
 
@@ -24,12 +29,12 @@ on:
 jobs:
   prepublishgate:
     runs-on: ubuntu-latest
-    name: PrePublishGate (regex layer)
+    name: PrePublishGate (regex layer + history)
 
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0   # full history needed for Tier 5
 
       - name: Comprehensive regex-based leak scan
         env:
@@ -95,7 +100,7 @@ jobs:
           echo "═══ Tier 2: PII / topology (HIGH) ═══"
           scan HIGH "Real LAN 192.168.x.x"        '\b192\.168\.[0-9]+\.[0-9]+\b'
           scan HIGH "Real LAN 10.x.x.x"           '\b10\.[0-9]+\.[0-9]+\.[0-9]+\b'
-          scan HIGH "Tailscale CGNAT (likely real)" '\b100\.(6[5-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]+\.[0-9]+\b'
+          scan HIGH "Tailscale CGNAT (likely real)" '\b100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]+\.[0-9]+\b'
           scan HIGH "MAC address (non-example)"   '\b([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b' --include='*.md' --include='*.yaml' --include='*.sh'
 
           echo ""
@@ -117,6 +122,100 @@ jobs:
               fi
             fi
           done
+
+          # ────────────────────────────────────────────────────────────
+          # Tier 5: full git history (every blob across all refs)
+          # ────────────────────────────────────────────────────────────
+          # The 2026-05-26 v3 audit found that working-tree scans miss
+          # leaks in historical tags and orphaned commits. Tier 5 walks
+          # every blob in the object database and runs the SAME critical
+          # patterns from Tier 1 against each. Same severity bar
+          # (CRITICAL = build-fail) so a token in an old tag is treated
+          # the same as one at HEAD.
+          #
+          # Cost: ~1-3 seconds for a typical small repo (<200 blobs).
+          # For very large repos the inner loop would need batching;
+          # for the nj070574-gif repos it's fine.
+          echo ""
+          echo "═══ Tier 5: full git history (CRITICAL) ═══"
+
+          hist_fail=0
+
+          # Build the list of (blob-sha, path) tuples from every ref.
+          blob_list=$(mktemp)
+          git rev-list --objects --all 2>/dev/null \
+            | awk 'NF==2 { print $1 "\t" $2 }' \
+            | sort -u -k1,1 \
+            > "$blob_list"
+
+          n_blobs=$(wc -l < "$blob_list" | tr -d ' ')
+          echo "  scanning $n_blobs unique blob(s) across all refs"
+
+          # The Tier-1 patterns, in pattern<TAB>name form. Kept identical to Tier 1
+          # so a history finding produces the same error label as a working-tree one.
+          # Patterns built as newline-separated <pattern>|||<name> entries.
+          # Newlines inside the bash string come from printf '%s\n'.
+          # ||| is used as the field separator (YAML disallows literal tabs
+          # in indented block scalars, and a single | would conflict with regex alternation).
+          patterns=$(printf '%s\n' \
+            '\bclh_[A-Za-z0-9_-]{30,}\b|||ClawHub token' \
+            '\b(ghp_|gho_|ghu_|ghs_|ghr_)[A-Za-z0-9]{20,}\b|||GitHub PAT' \
+            '\btskey-(auth|client|api)-[A-Za-z0-9-]{20,}\b|||Tailscale auth key' \
+            '\b(AKIA|ASIA|AGPA|AIDA|AROA|ANPA)[A-Z0-9]{16}\b|||AWS access key' \
+            '\bxox[abprs]-[A-Za-z0-9-]{10,}\b|||Slack token' \
+            '\bAIza[0-9A-Za-z_-]{35}\b|||Google API key' \
+            '\bsk-ant-[A-Za-z0-9_-]{30,}\b|||Anthropic API key' \
+            '\bsk-[A-Za-z0-9]{30,}\b|||OpenAI API key' \
+            '\bsk_live_[A-Za-z0-9]{24,}\b|||Stripe live key' \
+            '\b[0-9]{8,10}:[A-Za-z0-9_-]{30,}\b|||Telegram bot token' \
+            '\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_+/=-]{20,}\b|||JWT token' \
+            '-----BEGIN (RSA|OPENSSH|EC|DSA|ENCRYPTED|PGP) PRIVATE KEY-----|||Private key block'
+          )
+
+          # For each blob, cat-file once, then run all patterns against the buffer.
+          while IFS=$'\t' read -r sha path; do
+            # Skip the workflow file itself (defines the patterns) — same exemption
+            # the working-tree scan applies.
+            case "$path" in
+              *.github/workflows/security-scan.yml) continue ;;
+            esac
+
+            # Skip obvious non-text blobs by extension.
+            case "$path" in
+              *.png|*.jpg|*.jpeg|*.gif|*.webp|*.ico|*.pdf|*.zip|*.tar|*.gz|*.tgz|*.bz2|*.7z|*.mp3|*.mp4|*.wav|*.ogg|*.opus|*.so|*.dll|*.exe|*.bin|*.onnx|*.pt|*.pth|*.safetensors)
+                continue ;;
+            esac
+
+            blob_content=$(git cat-file -p "$sha" 2>/dev/null || true)
+            if [ -z "$blob_content" ]; then continue; fi
+
+            # Quick binary sniff: skip if first 8KB contains NUL bytes
+            if printf '%s' "$blob_content" | head -c 8192 | LC_ALL=C grep -Pq '\x00'; then continue; fi
+
+            while IFS= read -r line; do
+              [ -z "$line" ] && continue
+              # Split on the ||| separator using bash parameter expansion.
+              pat="${line%%|||*}"
+              name="${line##*|||}"
+              if printf '%s' "$blob_content" | grep -qE -- "$pat"; then
+                echo "::error title=Tier-5 CRITICAL — $name in history::blob $sha (path: $path)"
+                hist_fail=$((hist_fail + 1))
+              fi
+            done <<< "$patterns"
+          done < "$blob_list"
+
+          rm -f "$blob_list"
+
+          if [ "$hist_fail" -gt 0 ]; then
+            echo ""
+            echo "::error title=Tier 5 summary::found $hist_fail critical pattern(s) in git history"
+            echo "  Remediation: run git filter-repo locally to scrub the matching blobs,"
+            echo "  then force-push and re-anchor any affected tags."
+            echo "  See: https://github.com/newren/git-filter-repo"
+            fail_count=$((fail_count + hist_fail))
+          else
+            echo "  ✓ history clean ($n_blobs blob(s) scanned)"
+          fi
 
           echo ""
           echo "═══════════════════════════════════════════════"
