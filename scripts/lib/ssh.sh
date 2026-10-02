@@ -30,7 +30,7 @@ hearth_ssh_run() {
   if [ "$warmup" = "true" ]; then
     case "$auth" in
       ssh-pass)
-        local pw="${!password_env}"
+        local pw="${!password_env:-}"
         sshpass -p "$pw" ssh $opts "$user@$addr" 'true' >/dev/null 2>&1 || true
         ;;
       ssh-key)
@@ -46,7 +46,11 @@ hearth_ssh_run() {
       bash -c "$remote_cmd"
       ;;
     ssh-pass)
-      local pw="${!password_env}"
+      if ! command -v sshpass >/dev/null 2>&1; then
+        echo "ERROR: sshpass not installed but device $name uses auth: ssh-pass" >&2
+        return 1
+      fi
+      local pw="${!password_env:-}"
       if [ -z "$pw" ]; then
         echo "ERROR: env var $password_env is empty for device $name" >&2
         return 1
@@ -68,10 +72,28 @@ hearth_ssh_run() {
   esac
 }
 
-# Test if a device responds to ping
+# Test if a device responds to ping.
+# Falls back cleanly if the platform ping lacks -W (BSD/macOS uses -W in ms,
+# some minimal images lack ping entirely — in which case we report reachable=unknown
+# by returning success so later layers still run and carry the real signal).
+# Args: address [count] [timeout_seconds]
 hearth_ping() {
   local addr="$1"
   local count="${2:-1}"
   local timeout="${3:-2}"
-  ping -c "$count" -W "$timeout" "$addr" >/dev/null 2>&1
+
+  if ! command -v ping >/dev/null 2>&1; then
+    # No ping available; let SSH/HTTP layers be the reachability signal.
+    return 0
+  fi
+
+  # GNU/Linux: -c count -W timeout(sec). BSD/macOS: -c count -t timeout(sec).
+  if ping -c "$count" -W "$timeout" "$addr" >/dev/null 2>&1; then
+    return 0
+  fi
+  # Retry with BSD-style flag before declaring unreachable.
+  if ping -c "$count" -t "$timeout" "$addr" >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
 }

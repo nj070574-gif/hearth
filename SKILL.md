@@ -67,26 +67,35 @@ hearth is implemented as a thin wrapper around two scripts that ship with the pr
 Run from the user's hearth installation directory (typically `~/hearth/`):
 
 ```bash
-./scripts/sweep.sh                    # full sweep
+./scripts/sweep.sh                    # full sweep (runs devices in parallel)
 ./scripts/sweep.sh --device <name>    # one device
 ./scripts/sweep.sh --group <name>     # named group of devices
+./scripts/sweep.sh --problems-only    # only show devices that are DOWN/DEGRADED
+./scripts/sweep.sh --json             # machine-readable JSON (for agents/scripts)
+./scripts/sweep.sh --watch 30         # re-run every 30s until interrupted
+./scripts/sweep.sh --sequential       # one device at a time (disable parallelism)
 ./scripts/sweep.sh --dry-run          # validate config, no probes
 ```
 
 Show the user the raw output. The output is already designed to be human-readable; do not re-summarise unless the user explicitly asks for analysis.
+
+**Reading results programmatically.** hearth reports health, not just raw numbers. Each device resolves to `[OK]` / `[DEGRADED]` / `[DOWN]`, the sweep ends with an `N/M healthy` summary, and the process exit code is `0` (all healthy), `1` (something degraded), or `2` (something down) — so `sweep.sh` works directly as a cron/CI health gate. When you need to reason over the result rather than show it, run `./scripts/sweep.sh --json`: you get one object per device with `status`, per-layer values (load, mem, disk %, CPU temp, services, apps) and a `warnings` list explaining any degradation, plus a `summary` block. Prefer `--json` over scraping the text. For "what's wrong?" questions, `--problems-only` trims healthy devices from the view. A device is only ever marked degraded for a layer hearth could actually measure — an http-only or chroot host is never faked green *or* falsely flagged.
 
 ## Output format
 
 Each device's status is printed in this exact format:
 
 ```
-=== <ip-or-hostname> <name> [(<role>)] ===
+=== <ip-or-hostname> <name> [(<role>)] === [OK|DEGRADED|DOWN]
   L1 ping:    OK | UNREACHABLE
   L2 uptime:  <duration>, load: <1m> <5m> <15m>
-  L3 mem:     used <X> / <Y>, <Z> avail | disk: / <pct>% used, <free> free
+  L3 mem:     used <X> / <Y>, <Z> avail | disk: / <pct>% used, <free> free [| temp: <c>°C]
   L4 svc:     <service1>=active <service2>=active ...
   L5 app:     <app1>=<status> | <app2>=<status> ...
+  reason:     <why this device is degraded>   (only shown when DEGRADED)
 ```
+
+The run ends with a summary line, e.g. `=== 8/10 healthy, 1 degraded, 1 down — 12s ===`. Values over a threshold (disk/mem/load/temp) are flagged inline with `⚠` and colour; CPU temp appears on hosts that expose it (Raspberry Pi and other thermal-zone devices).
 
 Special cases:
 
@@ -155,4 +164,4 @@ If asked about specific configuration values (passwords, tokens), hearth does NO
 
 ## Version
 
-0.1.4 — schema-only example.yaml; app probes documented per-archetype. OpenClaw skill mode.
+0.2.0 — parallel sweep, health status + summary + exit codes, `--json` output, disk/mem/load/temp thresholds with `--problems-only`, `--watch`, Raspberry Pi CPU temp, and portability/robustness fixes. Backward-compatible: existing `devices.yaml` configs work unchanged. OpenClaw skill mode.

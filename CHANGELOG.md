@@ -5,6 +5,29 @@ All notable changes to hearth will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-10-02
+
+### Added
+- **Parallel sweep.** Devices are now probed concurrently (bounded pool, default 8) with output still printed in config order — the full-estate sweep is dramatically faster on larger labs. `--sequential` restores one-at-a-time behaviour; `--parallel <n>` sets the concurrency cap.
+- **Health status, summary and exit codes.** Every device resolves to `[OK]` / `[DEGRADED]` / `[DOWN]`. The sweep ends with an `N/M healthy, X degraded, Y down` summary, and the process exits `0`/`1`/`2` accordingly — so `sweep.sh` can be used directly as a cron/CI health gate.
+- **`--json` output.** Machine-readable JSON (one object per device with per-layer values, `status`, and a `warnings` list, plus a `summary` block and `exit_code`) for agents and scripts.
+- **Health thresholds.** Configurable `disk_warn_pct` (90), `mem_warn_pct` (90), `load_warn_per_cpu` (2) and `temp_warn_c` (75) flag a device DEGRADED and are marked inline with `⚠`. Thresholds apply only to layers actually measured — http-only/chroot hosts are never falsely flagged.
+- **`--problems-only`** to show only DOWN/DEGRADED devices; **`--watch <seconds>`** for a repeating live view.
+- **TTY-aware colour** (honours `NO_COLOR` and `HEARTH_COLOR=never|always|auto`), with `--no-color`.
+- **Raspberry Pi / thermal-zone CPU temperature** surfaced at L3.
+- Implemented the previously documented-only `expected_failed_units` (units allowed to be inactive without flagging) and `expect_no_match` (command probe fails if stdout matches).
+
+### Fixed
+- **Default config path crashed under `set -u`.** `hearth_find_config` referenced `$HEARTH_CONFIG` unguarded, so the common case (no `HEARTH_CONFIG` set, using `~/.hearth/devices.yaml`) aborted with an "unbound variable" error before finding the config. Now guarded.
+- HTTP probes now use a per-call `mktemp` file instead of a fixed `/tmp/.hearth_probe` (removes a symlink/race hazard and makes probes safe under parallelism).
+- Added a real `timeout`/`gtimeout`/perl fallback so a hung host can't block the run on macOS and minimal images (the "bundled fallback" the docs already promised).
+- Hardened `ping` for BSD/macOS flag differences and missing-`ping` environments.
+- Removed shell→Python string interpolation in the YAML helpers (values now passed via environment), fixing quoting fragility and normalising YAML booleans.
+- `--group` now has a dedicated config helper; failed HTTP probes no longer print a doubled `HTTP 000000`.
+
+### Notes
+- Backward-compatible: existing `devices.yaml` files work unchanged; all new keys are optional with sensible defaults.
+
 ## [0.1.1] — 2026-05-03
 
 ### Changed

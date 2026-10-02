@@ -8,22 +8,25 @@
 === HOMELAB — ESTATE HEALTH SWEEP ===
 Timestamp: 2026-05-02T13:24:19+01:00
 
-=== 192.0.2.10 main-server (OpenClaw / agent) ===
+=== 192.0.2.10 main-server (OpenClaw / agent) === [OK]
   L1 ping:    OK
   L2 uptime:  1 day, 2 hours, load: 0.15 0.18 0.15
   L3 mem:     used 1.6Gi / 7.7Gi, 6.0Gi avail | disk: / 6% used, 814G free
   L4 svc:     openclaw=active nginx=active ollama=active cron=active
   L5 app:     gateway={"ok":true,"status":"live"} | https-front=HTTP 200
 
-=== 192.0.2.20 fileserver (Samba + NFS file server) ===
+=== 192.0.2.20 fileserver (Samba + NFS file server) === [DEGRADED]
   L1 ping:    OK
   L2 uptime:  10 weeks, 3 days, load: 0.22 0.12 0.04
-  L3 mem:     used 364M / 2.7G, 2.1G avail | disk: / 6% used, 131G free
+  L3 mem:     used 364M / 2.7G, 2.1G avail | disk: / 92% used ⚠, 11G free
   L4 svc:     ssh=active nginx=active smbd=active nmbd=active nfs-mountd=active
   L5 app:     nginx=HTTP 200 | fileserver-manager=HTTP 302 | ts=connected
+  reason:     disk 92% >= 90%
 
-=== sweep complete in 14 seconds ===
+=== 1/2 healthy, 1 degraded — 14s ===
 ```
+
+Every device resolves to **`[OK]` / `[DEGRADED]` / `[DOWN]`**, the run ends with a one-line summary, and the exit code (`0`/`1`/`2`) means you can drop `sweep.sh` straight into cron or CI. Add `--json` for a machine-readable version an agent or script can reason over.
 
 ## What this gets you
 
@@ -45,11 +48,12 @@ $ ./scripts/sweep.sh
 
 ## Why hearth, specifically
 
-There's no shortage of monitoring tools. hearth is different in three ways that matter:
+There's no shortage of monitoring tools. hearth is different in four ways that matter:
 
 - **Read-only — guaranteed.** hearth never modifies remote state. No `systemctl restart`, no `apt-get install`, no rm, no writes beyond `/tmp/.hearth_*`. You can run it from an LLM agent, from cron, from a colleague's shell — it can't break anything. Most monitoring tools can't make that promise.
 - **Honest about what it can't see.** When a layer can't be probed (Windows host with no SSH, chroot with no systemd), hearth says so explicitly — `unmanaged-host (no SSH)`, `no-systemd (chroot — N/A)`. It doesn't fake a green result. You always know whether a green is real or just unmeasured.
 - **Zero install on remote hosts.** No agent on every box. No node_exporter. No daemon. Just SSH out from one bridgehead. If you can SSH to a host, hearth can probe it — there's nothing else to maintain.
+- **Answers, not just numbers.** Each device is scored `OK` / `DEGRADED` / `DOWN` against configurable disk/memory/load/temperature thresholds, the whole run reports a real exit code, and `--json` hands an agent or script structured results to act on — so "is everything OK?" has a one-word answer, not a wall of figures to eyeball.
 
 ## Who this is for
 
@@ -132,6 +136,24 @@ export HEARTH_PASS_HOSTNAME="your-ssh-password"
 ./scripts/sweep.sh
 ```
 
+### Command-line options
+
+```bash
+./scripts/sweep.sh                 # full sweep — devices probed in parallel
+./scripts/sweep.sh --device web    # just one device
+./scripts/sweep.sh --group cluster # a named group from your config
+./scripts/sweep.sh --problems-only # only the devices that are DOWN or DEGRADED
+./scripts/sweep.sh --json          # machine-readable JSON (agents / scripts / jq)
+./scripts/sweep.sh --watch 30      # live view, re-run every 30s
+./scripts/sweep.sh --dry-run       # validate config without probing anything
+```
+
+Exit code is `0` (all healthy), `1` (something degraded) or `2` (something down), so this works as a drop-in cron/CI health check:
+
+```bash
+./scripts/sweep.sh --problems-only || notify-send "homelab needs attention"
+```
+
 For the OpenClaw skill version, point your OpenClaw agent at `SKILL.md` and trigger with phrases like *"server status"*, *"check all servers"*, *"how is the lab"*.
 
 See [docs/INSTALL.md](docs/INSTALL.md) for full platform-specific instructions.
@@ -141,7 +163,7 @@ See [docs/INSTALL.md](docs/INSTALL.md) for full platform-specific instructions.
 | Platform | Status | Notes |
 |----------|--------|-------|
 | **Linux** (Debian/Ubuntu/Arch/Fedora) | ✅ Tier 1 | Primary target. All features work. |
-| **macOS** | ✅ Tier 1 | All features work. Requires `coreutils` for GNU `timeout` (or use bundled fallback). |
+| **macOS** | ✅ Tier 1 | All features work. Uses `gtimeout` from `coreutils` if present, otherwise a built-in perl fallback — no hard dependency. Needs bash 4+ (`brew install bash`). |
 | **WSL2 on Windows** | ✅ Tier 1 | Run hearth inside WSL2 Ubuntu/Debian. Full feature set. |
 | **Termux on Android** | ⚠️ Tier 2 | Works, with caveats — no systemd, mobile networking quirks. |
 | **Native Windows (PowerShell)** | ❌ Not supported | No native bash/sshpass. Use WSL2 instead. |
@@ -214,7 +236,7 @@ What hearth **does not** do, by design, with full source transparency:
 - ❌ Read your `~/.ssh/` or `/etc/shadow` or any host-state outside what your YAML asks for
 - ❌ Send your config, hostnames, or sweep output anywhere off-host
 
-Every single shell command hearth runs is visible in `scripts/` (490 lines of bash, ~13 KB) — small enough to read top-to-bottom in 15 minutes. We encourage you to do exactly that before installing.
+Every single shell command hearth runs is visible in `scripts/` (~960 lines of bash, ~34 KB) — small enough to read top-to-bottom. We encourage you to do exactly that before installing.
 
 If you have a security concern that isn't addressed by reading the source, please open an issue.
 ## Status
