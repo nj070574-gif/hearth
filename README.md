@@ -2,7 +2,7 @@
 
 > *the heartbeat of your homelab*
 
-**One command. 14 seconds. Every device in your lab. Same format, one screen.** No agent to install on remote hosts, no database, no SaaS, no telemetry — just SSH probes from a single bridgehead. Read-only by design, honest about what it can't see, and small enough to read top-to-bottom in 15 minutes before installing.
+**One command. 14 seconds. Every device in your lab. Same format, one screen.** No agent to install on remote hosts, no database, no SaaS, no telemetry — just read-only SSH probes from a single bridgehead. Read-only by design, host-key verification on by default, honest about what it can't see, and small enough to read top-to-bottom in 15 minutes before installing.
 
 ```
 === HOMELAB — ESTATE HEALTH SWEEP ===
@@ -50,10 +50,10 @@ $ ./scripts/sweep.sh
 
 There's no shortage of monitoring tools. hearth is different in four ways that matter:
 
-- **Read-only — guaranteed.** hearth never modifies remote state. No `systemctl restart`, no `apt-get install`, no rm, no writes beyond `/tmp/.hearth_*`. You can run it from an LLM agent, from cron, from a colleague's shell — it can't break anything. Most monitoring tools can't make that promise.
+- **Read-only — guaranteed.** hearth never modifies remote state: no service restarts, no package installs, no writes to remote hosts at all. The only local writes are a per-run temp file and hearth's own `~/.hearth/known_hosts`. You can run it from an LLM agent, from cron, from a colleague's shell — it can't change anything on the hosts it probes. Most monitoring tools can't make that promise.
+- **Secure by default.** SSH host-key verification is on out of the box (`StrictHostKeyChecking=accept-new`), pinning each host's key to a dedicated known_hosts file so a changed key aborts the probe rather than leaking a password to an impostor. SSH keys are preferred over passwords. See [Security & privacy](#security--privacy).
 - **Honest about what it can't see.** When a layer can't be probed (Windows host with no SSH, chroot with no systemd), hearth says so explicitly — `unmanaged-host (no SSH)`, `no-systemd (chroot — N/A)`. It doesn't fake a green result. You always know whether a green is real or just unmeasured.
-- **Zero install on remote hosts.** No agent on every box. No node_exporter. No daemon. Just SSH out from one bridgehead. If you can SSH to a host, hearth can probe it — there's nothing else to maintain.
-- **Answers, not just numbers.** Each device is scored `OK` / `DEGRADED` / `DOWN` against configurable disk/memory/load/temperature thresholds, the whole run reports a real exit code, and `--json` hands an agent or script structured results to act on — so "is everything OK?" has a one-word answer, not a wall of figures to eyeball.
+- **Zero install on remote hosts.** No agent on every box. No node_exporter. No daemon. Just read-only SSH out from one bridgehead. If you can SSH to a host, hearth can probe it — there's nothing else to maintain.
 
 ## Who this is for
 
@@ -94,9 +94,9 @@ If you run OpenClaw (or any LLM-agent runtime), hearth is the skill that turns "
 - *"is the file server up?"* → just that one device
 - *"why did the cluster go red?"* → sweep + diagnosis hints based on which layer failed
 
-Without hearth, the agent has to either improvise SSH commands (slow, inconsistent, sometimes wrong) or you have to type them yourself (which defeats the point of having an agent in the first place). hearth gives the agent a structured, fast, consistent tool — so it can answer in seconds, in the same shape every time, with no risk of accidentally restarting your production database.
+Without hearth, the agent has to either improvise SSH commands (slow, inconsistent, sometimes wrong) or you have to type them yourself (which defeats the point of having an agent in the first place). hearth gives the agent a structured, fast, consistent, **read-only** tool — so it can answer in seconds, in the same shape every time, with no risk of accidentally restarting your production database.
 
-The skill ships with a frontmatter description tuned for LLM trigger-matching, so phrases like *"server status"*, *"check all servers"*, *"how is the lab"*, *"health check"*, *"is X up"* all route to hearth automatically.
+The skill ships with frontmatter tuned for LLM trigger-matching, so homelab phrases like *"homelab status"*, *"check all my servers"*, *"how is the lab"*, *"homelab health check"*, *"is \<device\> up"* route to hearth automatically.
 
 ## How it works — the 5 layers
 
@@ -116,7 +116,7 @@ Designed for the realities of real homelabs:
 - **Mixed auth** — SSH password, SSH key, local exec, HTTP-only
 - **Mixed services** — bring-your-own list per device
 - **Honest reporting** — devices that can't be probed at L4 (Windows, chroots) say so, they don't fake it
-- **Read-only** — never modifies anything, never restarts services, never writes to remote hosts beyond temp files
+- **Read-only** — never modifies anything, never restarts services, never writes to remote hosts
 
 ## Quick start
 
@@ -126,6 +126,7 @@ git clone https://github.com/nj070574-gif/hearth.git
 cd hearth
 
 # 2. Copy the example config and customise it for your devices
+mkdir -p ~/.hearth
 cp examples/devices.example.yaml ~/.hearth/devices.yaml
 $EDITOR ~/.hearth/devices.yaml
 
@@ -135,6 +136,8 @@ export HEARTH_PASS_HOSTNAME="your-ssh-password"
 # 4. Run a sweep
 ./scripts/sweep.sh
 ```
+
+On the first sweep, hearth pins each host's SSH key to `~/.hearth/known_hosts` (trust-on-first-use). From then on, a changed key aborts that host's probe — see [Security & privacy](#security--privacy).
 
 ### Command-line options
 
@@ -154,9 +157,7 @@ Exit code is `0` (all healthy), `1` (something degraded) or `2` (something down)
 ./scripts/sweep.sh --problems-only || notify-send "homelab needs attention"
 ```
 
-For the OpenClaw skill version, point your OpenClaw agent at `SKILL.md` and trigger with phrases like *"server status"*, *"check all servers"*, *"how is the lab"*.
-
-See [docs/INSTALL.md](docs/INSTALL.md) for full platform-specific instructions.
+For the OpenClaw skill version, point your OpenClaw agent at `SKILL.md` and trigger with homelab phrases like *"homelab status"*, *"check all my servers"*, *"how is the lab"*.
 
 ## Platforms
 
@@ -210,35 +211,24 @@ Mix and match for your own lab.
 
 ## Security & privacy
 
-- **No credentials in config files.** Passwords live in env vars (`HEARTH_PASS_<NAME>`), SSH keys live in `~/.ssh/`. The repo's `.gitignore` blocks accidental commits.
-- **Read-only probes.** hearth runs `uptime`, `free`, `df`, `systemctl is-active`, `curl`. It never modifies remote state.
-- **No telemetry.** hearth doesn't phone home. Your sweep results stay on your machine.
-- **No third-party services required.** No accounts, no API keys, no SaaS dependencies.
+hearth is built to be safe to run from an agent, from cron, or from a shared shell.
 
-## About the SUSPICIOUS moderation badge on registries
+- **Read-only probes.** hearth runs only non-mutating queries — `uptime`, `free`, `df`, `systemctl is-active`, `curl` (GET). It never restarts a service, installs a package, or writes to a remote host.
+- **Host-key verification on by default.** SSH probes use `StrictHostKeyChecking=accept-new`: each host's key is pinned on first contact to a dedicated `~/.hearth/known_hosts`, and a later key change aborts that host's probe — the guard that stops a man-in-the-middle from intercepting a password login. Tune with `HEARTH_SSH_STRICT`:
+  - `accept-new` *(default)* — trust-on-first-use, reject changed keys
+  - `yes` — strictest; the key must already be in `known_hosts` (pre-populate it for the hardest posture)
+  - `no` — disabled (MITM risk); only for throwaway labs, and hearth warns on every run
 
-Some skill registries (including ClawHub) auto-flag this skill as **"SUSPICIOUS"** with reason codes like `install_untrusted_source`, `llm_suspicious`, and `vt_suspicious`. **This rating is expected** for any skill of this kind, and here's why — so you can make an informed decision before installing.
+  Move the known_hosts file with `HEARTH_KNOWN_HOSTS`. hearth never touches your personal `~/.ssh/known_hosts`.
+- **SSH keys preferred.** Use `auth: ssh-key` with a dedicated, unprivileged key where you can; `ssh-pass` is supported for devices that only take passwords and `sshpass` is invoked only for those.
+- **No credentials in config files.** Passwords live in env vars (`HEARTH_PASS_<NAME>`), tokens in `HEARTH_<APP>_TOKEN`, SSH keys in `~/.ssh/`. The repo's `.gitignore` blocks accidental commits, and hearth never echoes a credential.
+- **Least privilege.** hearth never needs `sudo` or root — every probe runs as an ordinary user. A dedicated read-only SSH account is ideal.
+- **No telemetry, no third parties.** hearth talks only to the hosts in your `devices.yaml`. It doesn't phone home; your sweep results stay on your machine.
 
-The rating is triggered by static patterns that scanners cannot distinguish from genuinely-malicious skills:
+## Registry moderation badge
 
-| What scanners see | What it actually is |
-|--|--|
-| Bash scripts that call `ssh` and `curl` against multiple remote hosts | Read-only health probes — `uptime`, `free`, `df`, `systemctl is-active`, `curl /healthz`. Same commands you'd type by hand. |
-| References to `sshpass` for password-based SSH | Optional dependency, only used if YOUR config sets `auth: ssh-pass`. Never invoked otherwise. |
-| Documentation showing `apt-get install`, `pkg install`, `brew install` | Standard install instructions for standard dependencies (bash, openssh, curl). |
-| User-defined `command:` probe type in YAML config | Runs YOUR commands from YOUR config, on YOUR machines. hearth does not generate, fetch, or modify these. |
+Some skill registries auto-flag any skill that shells out to `ssh`/`curl` across multiple hosts, because a static scanner can't tell a read-only health probe from a malicious one. hearth is deliberately small (~960 lines of bash in `scripts/`) so you can verify it yourself: every command it runs is read-only and visible in the source. If a scan flags it, read `scripts/` and `SKILL.md` — the frontmatter declares the exact binaries, scope, and credential handling — then decide. Security concerns that reading the source doesn't resolve are welcome as issues.
 
-What hearth **does not** do, by design, with full source transparency:
-
-- ❌ Phone home, log to remote servers, or telemetry of any kind
-- ❌ Modify any state on remote hosts (no `systemctl restart`, no `apt-get install`, no writes beyond `/tmp/.hearth_*`)
-- ❌ Fetch or execute code from external sources at runtime
-- ❌ Read your `~/.ssh/` or `/etc/shadow` or any host-state outside what your YAML asks for
-- ❌ Send your config, hostnames, or sweep output anywhere off-host
-
-Every single shell command hearth runs is visible in `scripts/` (~960 lines of bash, ~34 KB) — small enough to read top-to-bottom. We encourage you to do exactly that before installing.
-
-If you have a security concern that isn't addressed by reading the source, please open an issue.
 ## Status
 
 Pre-release. Tested against a 10-device homelab covering:
