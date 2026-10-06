@@ -5,6 +5,22 @@ All notable changes to hearth will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-10-05
+
+### Security
+- **SSH host-key verification is now ON by default.** `hearth_ssh_opts()` previously set `StrictHostKeyChecking=no`, which — combined with `sshpass` password auth — allowed a password login to a host whose key had changed (a man-in-the-middle exposure). hearth now defaults to `StrictHostKeyChecking=accept-new`: each host's key is pinned on first contact and any later change aborts that device's probe. Host keys are pinned to a **dedicated** `~/.hearth/known_hosts`, kept separate from the user's personal `~/.ssh/known_hosts`.
+- **New `HEARTH_SSH_STRICT` control** — `accept-new` (default), `yes` (strictest; key must already be known), or `no` (disabled, with a warning printed on every run). `HEARTH_KNOWN_HOSTS` overrides the known_hosts location.
+- hearth never disables host-key checking silently; `no` is an explicit, warned opt-in only.
+
+### Changed
+- **SKILL.md restructured with declarative security frontmatter** — added `requires:` (with an explicit `binaries:` allow-list), `security:` (scope, risk level, auth method, host-key verification, credential handling, network access), and `prompt_injection_mitigation:` blocks, plus "Scope & least privilege", "Host-key verification", "Input handling & injection safety", and "Intended use & risk acknowledgement" sections. This declares hearth's read-only, least-privilege boundaries explicitly rather than leaving them implicit.
+- **Tightened skill triggers** to homelab-scoped phrasing (e.g. "homelab status", "check all my servers", "is <device> up?") so the skill no longer matches generic, non-homelab questions.
+- **Docs clarified**: README's registry-badge section condensed; INSTALL notes that package-manager/`sudo` steps are run by the user (never by hearth) and documents the new SSH host-key env vars; PLATFORMS reframes Tailscale/Docker capability notes (`NET_ADMIN`, `/dev/net/tun`) as third-party-tool caveats that hearth itself never needs.
+- Uninstall instructions use `rm -r` (non-forced) instead of `rm -rf`.
+
+### Notes
+- Backward-compatible: existing `devices.yaml` files work unchanged; read-only probe behaviour is unchanged. The only behavioural change is that a host whose SSH key has changed since first contact will now abort its probe (the intended MITM guard) until the stale entry is removed from `~/.hearth/known_hosts`.
+
 ## [0.2.0] — 2026-10-02
 
 ### Added
